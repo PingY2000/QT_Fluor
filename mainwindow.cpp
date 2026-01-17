@@ -1,7 +1,6 @@
 //miinwindows.cpp
 #include "mainwindow.h"
 #include "ui_mainwindow.h"
-#include "led_ring_widget.h"
 #include "serialmanager.h"
 #include "motor_lens.h"
 #include "cameramanager.h"
@@ -51,38 +50,6 @@ MainWindow::MainWindow(QWidget *parent)
     ui->spinBox_ExpoGain->setReadOnly(true);
     camera->setAutoExposure(true);
     connect(camera, &CameraManager::exposureChanged, this, &MainWindow::updateExposureDisplay);
-
-
-    //led控件初始化
-    ringWidget = new LedRingWidget(this, serialManager);  // 将其传给 LED 控件
-    ui->verticalLayout->addWidget(ringWidget);
-
-    //led颜色设置
-    // 颜色模式列表
-    struct ColorMode {
-        QString name;
-        QString hex; // 或 QColor
-    };
-
-    QVector<ColorMode> colorModes = {
-        {"白",   "#ffffff"},
-        {"红",   "#ff0000"},
-        {"绿",   "#00ff00"},
-        {"蓝",   "#0000ff"},
-    };
-
-    // 添加到下拉框
-    for (const auto& mode : colorModes) {
-        QPixmap pix(20,20);
-        pix.fill(Qt::transparent);
-        QPainter p(&pix);
-        p.setRenderHint(QPainter::Antialiasing);
-        p.setBrush(QColor(mode.hex));
-        p.setPen(Qt::NoPen);
-        p.drawEllipse(0,0,20,20);
-        ui->comboBox_LedColorMode->addItem(QIcon(pix), mode.name, mode.hex);
-    }
-
 
     //镜头电机组件
     motorLens = new MotorLens(serialManager, this);
@@ -156,21 +123,6 @@ void MainWindow::updateExposureDisplay() {
     }
 }
 
-void MainWindow::on_pushButton_All_On_clicked()
-{
-    for (int i = 0; i <ringWidget->ledStates.size(); ++i) {
-        ringWidget->ledStates[i].on = true;
-    }
-    ringWidget->refreshLed();
-}
-
-void MainWindow::on_pushButton_All_Off_clicked()
-{
-    for (int i = 0; i <ringWidget->ledStates.size(); ++i) {
-        ringWidget->ledStates[i].on = false;
-    }
-    ringWidget->refreshLed();
-}
 
 void MainWindow::refreshSerialPorts()
 {
@@ -248,9 +200,6 @@ void MainWindow::on_verticalSlider_LensSpeed_valueChanged(int value)
 }
 
 
-
-
-
 void MainWindow::on_verticalSlider_LensSpeed_sliderReleased()
 {
     ui->verticalSlider_LensSpeed->setValue(0);
@@ -305,18 +254,9 @@ void MainWindow::on_spinBox_ExpoGain_valueChanged(int arg1)
 
 void MainWindow::on_pushButton_Snap_clicked()
 {
-    QString ledStateStr;
-    if (ringWidget) {
-        QVector<QPair<bool, QString>> states = ringWidget->getLedStates();
-        for (const auto &s : states) {
-            ledStateStr += s.first ? "1" : "0";  // LED开=1，关=0
-        }
-    } else {
-        ledStateStr = "UNKNOWN";
-    }
 
-    if (camera && camera->isOpen()) {
-        camera->setLedStateString(ledStateStr);  // 把 LED 状态传给 CameraManager
+
+    if (camera && camera->isOpen()) { // 把 LED 状态传给 CameraManager
         disconnect(camera, &CameraManager::stillImageArrived, nullptr, nullptr); // 先断开所有旧的连接，避免重复
         connect(camera, &CameraManager::stillImageArrived, this, [=]() {
             camera->fetchStillImageTif();
@@ -331,8 +271,7 @@ void MainWindow::on_pushButton_Snap_clicked()
 
         // 3. 构造文件名
         QString filename = QString("snapshot_%1_LED%2.tif")
-                               .arg(timestamp)
-                               .arg(ledStateStr);
+                               .arg(timestamp);
 
         QString saveDir = "D:/snap_test"; // ← 替换为实际保存路径
         QDir().mkpath(saveDir);
@@ -435,27 +374,7 @@ void MainWindow::on_pushButton_AutoScan_toggled(bool checked)
         if (!autoScanTimer) {
             autoScanTimer = new QTimer(this);
             connect(autoScanTimer, &QTimer::timeout, this, [=]() {
-                int ledCount = ringWidget->ledStates.size(); // 使用 ringWidget
-
-                if (currentLedIndex >= ledCount) {
-                    // 扫描完毕
-                    autoScanTimer->stop();
-                    ui->pushButton_AutoScan->setChecked(false);
-                    qDebug() << "自动扫描结束";
-                    return;
-                }
-
-                // 1. 关闭所有灯
-                ui->pushButton_All_Off->click();
-
-                // 2. 打开当前灯
-                 ringWidget->clickLed(currentLedIndex);
-
-                // 3. 拍照
                 ui->pushButton_Snap->click();
-
-                // 4. 进入下一个灯
-                currentLedIndex++;
             });
         }
 
@@ -469,15 +388,5 @@ void MainWindow::on_pushButton_AutoScan_toggled(bool checked)
 }
 
 
-void MainWindow::on_comboBox_LedColorMode_currentIndexChanged(int index)
-{
-    QString hex = ui->comboBox_LedColorMode->currentData().toString();
 
-    // 设置所有 LED 为统一颜色
-    for (int i = 0; i < ringWidget->ledStates.size(); i++) {
-        ringWidget->ledStates[i].color = hex;
-    }
-
-    ringWidget->refreshLed(); // 刷新 LED 环显示并发送串口
-}
 

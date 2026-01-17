@@ -27,8 +27,6 @@ public:
     ~MainWindow();
 
 private slots:
-    void on_pushButton_All_On_clicked();
-    void on_pushButton_All_Off_clicked();
 
     void refreshSerialPorts();
     //void connectSerial();
@@ -80,7 +78,6 @@ private slots:
 
     void on_pushButton_AutoScan_toggled(bool checked);
 
-    void on_comboBox_LedColorMode_currentIndexChanged(int index);
 
 private:
 

@@ -122,12 +122,16 @@ private:
 
     // 转盘物理参数（可根据实际效果调整）
     const int turntablePositions = 4;
-    const int turntableFrequency = 800; // 运动频率
-    const int moveDurationMs = 500;     // 旋转 90 度所需的时间 (ms)
+    const int turntableFrequency = 1015; // 运动频率
+    const int moveDurationMs = 8000;     // 旋转 90 度所需的时间 (ms)
     const int settleDurationMs = 300;   // 停稳后的缓冲时间 (ms)
 
     void autoScanStep();                // 状态机核心跳转函数
     void startMotion(int frequency);    // 开启电机
     void stopMotion();                  // 关闭电机
+
+    void handleTurntableSwitch(int targetIndex);
+
+    int m_currentPositionIndex = 0; // 记录当前转盘在哪个位置 (0, 1, 2, 3)
 };
 #endif // MAINWINDOW_H

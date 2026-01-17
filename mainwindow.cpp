@@ -33,12 +33,17 @@ MainWindow::MainWindow(QWidget *parent)
     ui->setupUi(this);
 
     // 创建互斥按钮组
-    QButtonGroup* group = new QButtonGroup(this);
-    group->addButton(ui->pushButton_ModeBright);
-    group->addButton(ui->pushButton_Mode365);
-    group->addButton(ui->pushButton_Mode488);
-    group->addButton(ui->pushButton_Mode532);
-    group->setExclusive(true);
+        QButtonGroup* group = new QButtonGroup(this);
+        group->addButton(ui->pushButton_ModeBright, 0);
+        group->addButton(ui->pushButton_Mode365, 1);
+        group->addButton(ui->pushButton_Mode488, 2);
+        group->addButton(ui->pushButton_Mode532, 3);
+        group->setExclusive(true);
+
+        // 2. 连接信号：当组内按钮被点击时触发转盘移动
+        connect(group, &QButtonGroup::idClicked, this, [=](int id) {
+            handleTurntableSwitch(id);
+        });
 
     //串口初始化
     serialManager = new SerialManager(this);
@@ -301,49 +306,6 @@ void MainWindow::on_pushButton_Snap_clicked()
 
 }
 
-void MainWindow::on_pushButton_SnapScheduled_toggled(bool checked)
-{
-    if (checked) {
-        qDebug() << "Auto Scan Starting...";
-        scanTasks.clear();
-
-        // 采集 UI 上的 4 个通道数据
-        // 通道 1: 明场 (Bright)
-        if (ui->checkBox_ModeBright->isChecked()) {
-            scanTasks.append({"Bright", ui->spinBox_ModeBrightPos->value(),
-                              ui->spinBox_ExposureTime_ModeBright->value(),
-                              ui->spinBox_ExpoGain_ModeBright->value(), true});
-        }
-        // 通道 2: 365nm
-        if (ui->checkBox_Mode365->isChecked()) {
-            scanTasks.append({"365", ui->spinBox_Mode365Pos->value(),
-                              ui->spinBox_ExposureTime_Mode365->value(),
-                              ui->spinBox_ExpoGain_Mode365->value(), true});
-        }
-        // ... 以此类推添加 488 和 532 的判断 ...
-
-        if (scanTasks.isEmpty()) {
-            QMessageBox::warning(this, "提醒", "请至少勾选一个启用的模式");
-            ui->pushButton_SnapScheduled->setChecked(false);
-            return;
-        }
-
-        currentTaskIndex = 0;
-        // 起始动作：由于手动已经调至 0 位，建议第一个任务直接从 Capture 开始
-        scanState = AutoScanState::Capture;
-
-        if (!autoScanTimer) {
-            autoScanTimer = new QTimer(this);
-            connect(autoScanTimer, &QTimer::timeout, this, &MainWindow::autoScanStep);
-        }
-        autoScanTimer->start(50);
-    } else {
-        if (autoScanTimer) autoScanTimer->stop();
-        stopMotion();
-        scanState = AutoScanState::Idle;
-    }
-}
-
 
 
 void MainWindow::on_toolButton_FilePath_clicked()
@@ -444,6 +406,63 @@ void MainWindow::on_pushButton_MotorFliter_ENA_toggled(bool checked)
     fluorescence->setEnabled(checked);
 }
 
+
+
+void MainWindow::on_pushButton_SnapScheduled_toggled(bool checked)
+{
+    if (checked) {
+        qDebug() << "Auto Scan Starting...";
+        scanTasks.clear();
+
+        // 采集 UI 上的 4 个通道数据
+        // 通道 1: 明场 (Bright)
+        if (ui->checkBox_ModeBright->isChecked()) {
+            scanTasks.append({"Bright", ui->spinBox_ModeBrightPos->value(),
+                              ui->spinBox_ExposureTime_ModeBright->value(),
+                              ui->spinBox_ExpoGain_ModeBright->value(), true});
+        }
+        // 通道 4: 532nm
+        if (ui->checkBox_Mode532->isChecked()) {
+            scanTasks.append({"532", ui->spinBox_Mode532Pos->value(),
+                              ui->spinBox_ExposureTime_Mode532->value(),
+                              ui->spinBox_ExpoGain_Mode532->value(), true});
+        }
+
+        // 通道 2: 365nm
+        if (ui->checkBox_Mode365->isChecked()) {
+            scanTasks.append({"365", ui->spinBox_Mode365Pos->value(),
+                              ui->spinBox_ExposureTime_Mode365->value(),
+                              ui->spinBox_ExpoGain_Mode365->value(), true});
+        }
+        // 通道 3: 488nm
+        if (ui->checkBox_Mode488->isChecked()) {
+            scanTasks.append({"488", ui->spinBox_Mode488Pos->value(),
+                              ui->spinBox_ExposureTime_Mode488->value(),
+                              ui->spinBox_ExpoGain_Mode488->value(), true});
+        }
+
+        if (scanTasks.isEmpty()) {
+            QMessageBox::warning(this, "提醒", "请至少勾选一个启用的模式");
+            ui->pushButton_SnapScheduled->setChecked(false);
+            return;
+        }
+
+        currentTaskIndex = 0;
+        // 起始动作：由于手动已经调至 0 位，建议第一个任务直接从 Capture 开始
+        scanState = AutoScanState::Capture;
+
+        if (!autoScanTimer) {
+            autoScanTimer = new QTimer(this);
+            connect(autoScanTimer, &QTimer::timeout, this, &MainWindow::autoScanStep);
+        }
+        autoScanTimer->start(50);
+    } else {
+        if (autoScanTimer) autoScanTimer->stop();
+        stopMotion();
+        scanState = AutoScanState::Idle;
+    }
+}
+
 void MainWindow::autoScanStep()
 {
     if (currentTaskIndex >= scanTasks.size()) {
@@ -521,7 +540,40 @@ void MainWindow::stopMotion()
     fluorescence->setFrequency(0);
 }
 
+void MainWindow::handleTurntableSwitch(int targetIndex)
+{
+    if (targetIndex == m_currentPositionIndex) return;
 
+    // 1. 计算位置差 (假设转盘只能单向正向旋转)
+    int steps = targetIndex - m_currentPositionIndex;
+    if (steps < 0) steps += 4; // 处理从位置3回到位置0的情况
+
+    // 2. 禁用 UI 交互，防止运动中再次点击
+    ui->groupBox_Image->setEnabled(false);
+    qDebug() << "Moving Turntable from" << m_currentPositionIndex << "to" << targetIndex;
+
+    // 3. 计算运动总时间
+    // 旋转 90 度的时间是 moveDurationMs，旋转 steps * 90 度的时间：
+    int totalMoveTime = steps * moveDurationMs;
+
+    // 4. 启动电机
+    startMotion(turntableFrequency);
+
+    // 5. 使用定时器在运动完成后停止电机并恢复 UI
+    QTimer::singleShot(totalMoveTime, this, [=]() {
+        stopMotion();
+
+        // 停稳后的处理
+        QTimer::singleShot(settleDurationMs, this, [=]() {
+            m_currentPositionIndex = targetIndex; // 更新当前位置记录
+            ui->groupBox_Image->setEnabled(true); // 恢复 UI
+            qDebug() << "Turntable reached position:" << targetIndex;
+
+            // 可以在这里根据当前选中的 ID 自动打开对应的激光
+            // 例如：if(targetIndex == 1) ui->pushButton_Laser365->click();
+        });
+    });
+}
 
 
 

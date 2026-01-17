@@ -14,6 +14,7 @@
 #include <QFileDialog>
 #include <QSettings>
 #include <QPainter>
+#include <QButtonGroup>
 
 
 
@@ -30,6 +31,14 @@ MainWindow::MainWindow(QWidget *parent)
 
 {
     ui->setupUi(this);
+
+    // 创建互斥按钮组
+    QButtonGroup* group = new QButtonGroup(this);
+    group->addButton(ui->pushButton_ModeBright);
+    group->addButton(ui->pushButton_Mode365);
+    group->addButton(ui->pushButton_Mode488);
+    group->addButton(ui->pushButton_Mode532);
+    group->setExclusive(true);
 
     //串口初始化
     serialManager = new SerialManager(this);
@@ -294,12 +303,44 @@ void MainWindow::on_pushButton_Snap_clicked()
 
 void MainWindow::on_pushButton_SnapScheduled_toggled(bool checked)
 {
-    ui->spinBox_SnapScheduledTime->setReadOnly(checked);
     if (checked) {
-        ui->pushButton_Snap->click();
-        snapshotTimer->start(ui->spinBox_SnapScheduledTime->value()*1000); // 每 5000 毫秒（5 秒）拍一次
+        qDebug() << "Auto Scan Starting...";
+        scanTasks.clear();
+
+        // 采集 UI 上的 4 个通道数据
+        // 通道 1: 明场 (Bright)
+        if (ui->checkBox_ModeBright->isChecked()) {
+            scanTasks.append({"Bright", ui->spinBox_ModeBrightPos->value(),
+                              ui->spinBox_ExposureTime_ModeBright->value(),
+                              ui->spinBox_ExpoGain_ModeBright->value(), true});
+        }
+        // 通道 2: 365nm
+        if (ui->checkBox_Mode365->isChecked()) {
+            scanTasks.append({"365", ui->spinBox_Mode365Pos->value(),
+                              ui->spinBox_ExposureTime_Mode365->value(),
+                              ui->spinBox_ExpoGain_Mode365->value(), true});
+        }
+        // ... 以此类推添加 488 和 532 的判断 ...
+
+        if (scanTasks.isEmpty()) {
+            QMessageBox::warning(this, "提醒", "请至少勾选一个启用的模式");
+            ui->pushButton_SnapScheduled->setChecked(false);
+            return;
+        }
+
+        currentTaskIndex = 0;
+        // 起始动作：由于手动已经调至 0 位，建议第一个任务直接从 Capture 开始
+        scanState = AutoScanState::Capture;
+
+        if (!autoScanTimer) {
+            autoScanTimer = new QTimer(this);
+            connect(autoScanTimer, &QTimer::timeout, this, &MainWindow::autoScanStep);
+        }
+        autoScanTimer->start(50);
     } else {
-        snapshotTimer->stop();
+        if (autoScanTimer) autoScanTimer->stop();
+        stopMotion();
+        scanState = AutoScanState::Idle;
     }
 }
 
@@ -324,20 +365,58 @@ void MainWindow::on_lineEdit_FilePath_textChanged(const QString &arg1)
 
 void MainWindow::on_pushButton_Laser365_toggled(bool checked)
 {
-    fluorescence->sendFluorescenceCommand(ui->pushButton_Laser365->isChecked(),ui->pushButton_Laser488->isChecked(),ui->pushButton_Laser532->isChecked());
-
+    fluorescence->sendFluorescenceCommand(checked,ui->pushButton_Laser488->isChecked(),ui->pushButton_Laser532->isChecked());
 }
 
 
 void MainWindow::on_pushButton_Laser488_toggled(bool checked)
 {
-    fluorescence->sendFluorescenceCommand(ui->pushButton_Laser365->isChecked(),ui->pushButton_Laser488->isChecked(),ui->pushButton_Laser532->isChecked());
+    fluorescence->sendFluorescenceCommand(ui->pushButton_Laser365->isChecked(),checked,ui->pushButton_Laser532->isChecked());
 }
 
 
 void MainWindow::on_pushButton_Laser532_toggled(bool checked)
 {
-    fluorescence->sendFluorescenceCommand(ui->pushButton_Laser365->isChecked(),ui->pushButton_Laser488->isChecked(),ui->pushButton_Laser532->isChecked());
+    fluorescence->sendFluorescenceCommand(ui->pushButton_Laser365->isChecked(),ui->pushButton_Laser488->isChecked(),checked);
+}
+
+void MainWindow::on_pushButton_LightBright_toggled(bool checked)
+{
+    QByteArray data;
+    data.append(0xA5);  // HEADER
+    data.append(0x5A);
+    data.append(0x01);
+    data.append(17);
+
+    uint8_t accumulator = 0;
+    int bitPos = 0; // 当前 bit 写入位置（0~7）
+
+    for (int i = 0; i < 43; i++) {
+
+        uint8_t v = (checked << 2) | (checked << 1) | checked ;
+
+        for (int bit = 0; bit < 3; bit++) {
+
+            // 写入这一 bit
+            accumulator |= ((v >> bit) & 1) << bitPos;
+            bitPos++;
+
+            // 填满 8 bit，就 push 到 data
+            if (bitPos == 8) {
+                data.append(accumulator);
+                accumulator = 0;
+                bitPos = 0;
+            }
+        }
+    }
+
+    // 最后不足 8bit 的也要 append
+    if (bitPos != 0)
+        data.append(accumulator);
+
+    if (serialManager && serialManager->isOpen()) {
+        serialManager->sendDatawithCRC(data);
+    }
 }
 
 
@@ -365,27 +444,84 @@ void MainWindow::on_pushButton_MotorFliter_ENA_toggled(bool checked)
     fluorescence->setEnabled(checked);
 }
 
-
-void MainWindow::on_pushButton_AutoScan_toggled(bool checked)
+void MainWindow::autoScanStep()
 {
-    if (checked) {
-        qDebug() << "自动扫描开始";
+    if (currentTaskIndex >= scanTasks.size()) {
+        scanState = AutoScanState::Finished;
+    }
 
-        if (!autoScanTimer) {
-            autoScanTimer = new QTimer(this);
-            connect(autoScanTimer, &QTimer::timeout, this, [=]() {
-                ui->pushButton_Snap->click();
-            });
+    switch (scanState) {
+    case AutoScanState::Capture: {
+        CaptureTask task = scanTasks[currentTaskIndex];
+        qDebug() << "Executing Task:" << task.modeName;
+
+        // 1. 设置相机参数
+        camera->put_ExpoTime(task.exposure);
+        camera->put_ExpoGain(task.gain);
+
+        // 2. 触发 UI 按钮（利用 click() 自动触发之前的指令发送逻辑）
+        if (task.modeName == "Bright") ui->pushButton_ModeBright->click();
+        else if (task.modeName == "365") ui->pushButton_Mode365->click();
+        else if (task.modeName == "488") ui->pushButton_Mode488->click();
+        else if (task.modeName == "532") ui->pushButton_Mode532->click();
+
+        // 3. 拍照并等待
+        disconnect(camera, &CameraManager::stillImageArrived, nullptr, nullptr);
+        connect(camera, &CameraManager::stillImageArrived, this, [=]() {
+            camera->fetchStillImageTif();
+            scanState = AutoScanState::NextPosition; // 拍照完进入下一阶段
+        });
+        camera->snapImage();
+        scanState = AutoScanState::WaitCaptureDone;
+        break;
+    }
+
+    case AutoScanState::NextPosition:
+        currentTaskIndex++;
+        if (currentTaskIndex < scanTasks.size()) {
+            scanState = AutoScanState::MoveTurntable;
+        } else {
+            scanState = AutoScanState::Finished;
         }
+        break;
 
-        currentLedIndex = 0;
-        autoScanTimer->start(3000); // 每1.5秒切换一个灯，可根据相机响应调整
-    } else {
-        qDebug() << "自动扫描停止";
-        if (autoScanTimer)
-            autoScanTimer->stop();
+    case AutoScanState::MoveTurntable:
+        startMotion(turntableFrequency);
+        scanState = AutoScanState::WaitTurntableStable;
+        QTimer::singleShot(moveDurationMs, this, [=]() {
+            stopMotion();
+            QTimer::singleShot(settleDurationMs, this, [=]() {
+                scanState = AutoScanState::Capture; // 转完停稳后，去拍照
+            });
+        });
+        break;
+
+    case AutoScanState::Finished:
+        ui->pushButton_SnapScheduled->setChecked(false);
+        // 结束时建议关闭所有光源
+        fluorescence->sendFluorescenceCommand(false, false, false);
+        break;
+
+    default: break;
     }
 }
+
+void MainWindow::startMotion(int frequency)
+{
+    // 借用你已有的 motorLens 或 fluorescence 接口控制转盘电机
+    // 假设转盘由 fluorescence 里的电机控制
+    fluorescence->setDirection(1); // 固定正向旋转
+    fluorescence->setFrequency(frequency);
+    fluorescence->setEnabled(true);
+}
+
+void MainWindow::stopMotion()
+{
+    fluorescence->setEnabled(false);
+    fluorescence->setFrequency(0);
+}
+
+
 
 
 

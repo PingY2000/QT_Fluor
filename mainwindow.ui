@@ -17,10 +17,10 @@
    <widget class="QLabel" name="labeldisplay">
     <property name="geometry">
      <rect>
-      <x>402</x>
-      <y>40</y>
-      <width>701</width>
-      <height>521</height>
+      <x>410</x>
+      <y>30</y>
+      <width>891</width>
+      <height>601</height>
      </rect>
     </property>
     <property name="styleSheet">
@@ -36,10 +36,10 @@
    <widget class="QGroupBox" name="groupBox_Serial">
     <property name="geometry">
      <rect>
-      <x>50</x>
-      <y>40</y>
-      <width>211</width>
-      <height>141</height>
+      <x>200</x>
+      <y>490</y>
+      <width>191</width>
+      <height>121</height>
      </rect>
     </property>
     <property name="title">
@@ -71,10 +71,10 @@
    <widget class="QGroupBox" name="groupBox_FliterMotor">
     <property name="geometry">
      <rect>
-      <x>200</x>
-      <y>630</y>
-      <width>301</width>
-      <height>131</height>
+      <x>210</x>
+      <y>640</y>
+      <width>321</width>
+      <height>121</height>
      </rect>
     </property>
     <property name="title">
@@ -97,7 +97,7 @@
         </widget>
        </item>
        <item>
-        <layout class="QVBoxLayout" name="verticalLayout_6">
+        <layout class="QHBoxLayout" name="horizontalLayout_11">
          <item>
           <widget class="QLabel" name="label_14">
            <property name="text">
@@ -307,9 +307,9 @@ QSlider::add-page:vertical {
    <widget class="QGroupBox" name="groupBox_Image">
     <property name="geometry">
      <rect>
-      <x>50</x>
-      <y>240</y>
-      <width>281</width>
+      <x>40</x>
+      <y>30</y>
+      <width>341</width>
       <height>241</height>
      </rect>
     </property>
@@ -351,21 +351,18 @@ QSlider::add-page:vertical {
         </layout>
        </item>
        <item>
-        <widget class="QSpinBox" name="spinBox_7"/>
+        <widget class="QSpinBox" name="spinBox_SnapScheduledTimes"/>
        </item>
       </layout>
      </item>
      <item>
       <layout class="QGridLayout" name="gridLayout_2">
-       <item row="1" column="0">
-        <widget class="QLabel" name="label_10">
-         <property name="text">
-          <string>365nm</string>
+       <item row="4" column="1">
+        <widget class="QSpinBox" name="spinBox_Mode532Pos">
+         <property name="value">
+          <number>3</number>
          </property>
         </widget>
-       </item>
-       <item row="4" column="1">
-        <widget class="QSpinBox" name="spinBox_6"/>
        </item>
        <item row="0" column="0">
         <widget class="QLabel" name="label_4">
@@ -375,17 +372,14 @@ QSlider::add-page:vertical {
         </widget>
        </item>
        <item row="2" column="1">
-        <widget class="QSpinBox" name="spinBox_4"/>
-       </item>
-       <item row="2" column="0">
-        <widget class="QLabel" name="label_11">
-         <property name="text">
-          <string>488nm</string>
+        <widget class="QSpinBox" name="spinBox_Mode365Pos">
+         <property name="value">
+          <number>1</number>
          </property>
         </widget>
        </item>
        <item row="2" column="3">
-        <widget class="QSpinBox" name="spinBox_ExpoGain_3">
+        <widget class="QSpinBox" name="spinBox_ExpoGain_Mode365">
          <property name="layoutDirection">
           <enum>Qt::LayoutDirection::LeftToRight</enum>
          </property>
@@ -404,7 +398,7 @@ QSlider::add-page:vertical {
         </widget>
        </item>
        <item row="4" column="4">
-        <widget class="QCheckBox" name="checkBox_4">
+        <widget class="QCheckBox" name="checkBox_Mode532">
          <property name="text">
           <string/>
          </property>
@@ -416,15 +410,8 @@ QSlider::add-page:vertical {
          </property>
         </widget>
        </item>
-       <item row="3" column="0">
-        <widget class="QLabel" name="label_12">
-         <property name="text">
-          <string>532nm</string>
-         </property>
-        </widget>
-       </item>
        <item row="1" column="1">
-        <widget class="QSpinBox" name="spinBox_3"/>
+        <widget class="QSpinBox" name="spinBox_ModeBrightPos"/>
        </item>
        <item row="0" column="4">
         <widget class="QLabel" name="label_9">
@@ -434,7 +421,7 @@ QSlider::add-page:vertical {
         </widget>
        </item>
        <item row="4" column="3">
-        <widget class="QSpinBox" name="spinBox_ExpoGain_5">
+        <widget class="QSpinBox" name="spinBox_ExpoGain_Mode532">
          <property name="layoutDirection">
           <enum>Qt::LayoutDirection::LeftToRight</enum>
          </property>
@@ -452,15 +439,8 @@ QSlider::add-page:vertical {
          </property>
         </widget>
        </item>
-       <item row="4" column="0">
-        <widget class="QLabel" name="label_13">
-         <property name="text">
-          <string>明场</string>
-         </property>
-        </widget>
-       </item>
        <item row="4" column="2">
-        <widget class="QSpinBox" name="spinBox_ExposureTime_5">
+        <widget class="QSpinBox" name="spinBox_ExposureTime_Mode532">
          <property name="layoutDirection">
           <enum>Qt::LayoutDirection::LeftToRight</enum>
          </property>
@@ -485,7 +465,7 @@ QSlider::add-page:vertical {
         </widget>
        </item>
        <item row="1" column="3">
-        <widget class="QSpinBox" name="spinBox_ExpoGain_2">
+        <widget class="QSpinBox" name="spinBox_ExpoGain_ModeBright">
          <property name="layoutDirection">
           <enum>Qt::LayoutDirection::LeftToRight</enum>
          </property>
@@ -504,7 +484,11 @@ QSlider::add-page:vertical {
         </widget>
        </item>
        <item row="3" column="1">
-        <widget class="QSpinBox" name="spinBox_5"/>
+        <widget class="QSpinBox" name="spinBox_Mode488Pos">
+         <property name="value">
+          <number>2</number>
+         </property>
+        </widget>
        </item>
        <item row="0" column="1">
         <widget class="QLabel" name="label_6">
@@ -514,7 +498,7 @@ QSlider::add-page:vertical {
         </widget>
        </item>
        <item row="1" column="2">
-        <widget class="QSpinBox" name="spinBox_ExposureTime_2">
+        <widget class="QSpinBox" name="spinBox_ExposureTime_ModeBright">
          <property name="layoutDirection">
           <enum>Qt::LayoutDirection::LeftToRight</enum>
          </property>
@@ -539,7 +523,7 @@ QSlider::add-page:vertical {
         </widget>
        </item>
        <item row="2" column="4">
-        <widget class="QCheckBox" name="checkBox_6">
+        <widget class="QCheckBox" name="checkBox_Mode365">
          <property name="text">
           <string/>
          </property>
@@ -552,7 +536,7 @@ QSlider::add-page:vertical {
         </widget>
        </item>
        <item row="3" column="2">
-        <widget class="QSpinBox" name="spinBox_ExposureTime_4">
+        <widget class="QSpinBox" name="spinBox_ExposureTime_Mode488">
          <property name="layoutDirection">
           <enum>Qt::LayoutDirection::LeftToRight</enum>
          </property>
@@ -577,7 +561,7 @@ QSlider::add-page:vertical {
         </widget>
        </item>
        <item row="3" column="3">
-        <widget class="QSpinBox" name="spinBox_ExpoGain_4">
+        <widget class="QSpinBox" name="spinBox_ExpoGain_Mode488">
          <property name="layoutDirection">
           <enum>Qt::LayoutDirection::LeftToRight</enum>
          </property>
@@ -596,7 +580,7 @@ QSlider::add-page:vertical {
         </widget>
        </item>
        <item row="1" column="4">
-        <widget class="QCheckBox" name="checkBox_5">
+        <widget class="QCheckBox" name="checkBox_ModeBright">
          <property name="text">
           <string/>
          </property>
@@ -616,7 +600,7 @@ QSlider::add-page:vertical {
         </widget>
        </item>
        <item row="3" column="4">
-        <widget class="QCheckBox" name="checkBox_7">
+        <widget class="QCheckBox" name="checkBox_Mode488">
          <property name="text">
           <string/>
          </property>
@@ -636,7 +620,7 @@ QSlider::add-page:vertical {
         </widget>
        </item>
        <item row="2" column="2">
-        <widget class="QSpinBox" name="spinBox_ExposureTime_3">
+        <widget class="QSpinBox" name="spinBox_ExposureTime_Mode365">
          <property name="layoutDirection">
           <enum>Qt::LayoutDirection::LeftToRight</enum>
          </property>
@@ -660,6 +644,49 @@ QSlider::add-page:vertical {
          </property>
         </widget>
        </item>
+       <item row="1" column="0">
+        <widget class="QPushButton" name="pushButton_ModeBright">
+         <property name="text">
+          <string>明场</string>
+         </property>
+         <property name="checkable">
+          <bool>true</bool>
+         </property>
+         <property name="checked">
+          <bool>true</bool>
+         </property>
+        </widget>
+       </item>
+       <item row="2" column="0">
+        <widget class="QPushButton" name="pushButton_Mode365">
+         <property name="text">
+          <string>365nm</string>
+         </property>
+         <property name="checkable">
+          <bool>true</bool>
+         </property>
+        </widget>
+       </item>
+       <item row="3" column="0">
+        <widget class="QPushButton" name="pushButton_Mode488">
+         <property name="text">
+          <string>488nm</string>
+         </property>
+         <property name="checkable">
+          <bool>true</bool>
+         </property>
+        </widget>
+       </item>
+       <item row="4" column="0">
+        <widget class="QPushButton" name="pushButton_Mode532">
+         <property name="text">
+          <string>532nm</string>
+         </property>
+         <property name="checkable">
+          <bool>true</bool>
+         </property>
+        </widget>
+       </item>
       </layout>
      </item>
     </layout>
@@ -668,9 +695,9 @@ QSlider::add-page:vertical {
     <property name="geometry">
      <rect>
       <x>40</x>
-      <y>570</y>
+      <y>490</y>
       <width>131</width>
-      <height>201</height>
+      <height>281</height>
      </rect>
     </property>
     <property name="title">
@@ -757,9 +784,9 @@ QSlider::add-page:vertical {
    <widget class="QGroupBox" name="groupBox">
     <property name="geometry">
      <rect>
-      <x>560</x>
+      <x>550</x>
       <y>670</y>
-      <width>291</width>
+      <width>311</width>
       <height>81</height>
      </rect>
     </property>
@@ -767,6 +794,16 @@ QSlider::add-page:vertical {
      <string>灯光设置</string>
     </property>
     <layout class="QHBoxLayout" name="horizontalLayout_10">
+     <item>
+      <widget class="QPushButton" name="pushButton_LightBright">
+       <property name="text">
+        <string>明场</string>
+       </property>
+       <property name="checkable">
+        <bool>true</bool>
+       </property>
+      </widget>
+     </item>
      <item>
       <widget class="QPushButton" name="pushButton_Laser365">
        <property name="styleSheet">
@@ -830,14 +867,30 @@ QPushButton:checked {
        </property>
       </widget>
      </item>
-     <item>
-      <widget class="QPushButton" name="pushButton">
-       <property name="text">
-        <string>明场</string>
-       </property>
-      </widget>
-     </item>
     </layout>
+   </widget>
+   <widget class="QGroupBox" name="groupBox_2">
+    <property name="geometry">
+     <rect>
+      <x>40</x>
+      <y>280</y>
+      <width>341</width>
+      <height>191</height>
+     </rect>
+    </property>
+    <property name="title">
+     <string>状态信息</string>
+    </property>
+    <widget class="QTextEdit" name="textEdit">
+     <property name="geometry">
+      <rect>
+       <x>10</x>
+       <y>40</y>
+       <width>321</width>
+       <height>141</height>
+      </rect>
+     </property>
+    </widget>
    </widget>
   </widget>
   <widget class="QMenuBar" name="menubar">
@@ -846,7 +899,7 @@ QPushButton:checked {
      <x>0</x>
      <y>0</y>
      <width>1376</width>
-     <height>21</height>
+     <height>24</height>
     </rect>
    </property>
   </widget>

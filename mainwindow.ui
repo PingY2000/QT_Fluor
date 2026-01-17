@@ -251,9 +251,9 @@ QSlider::add-page:vertical {
        <item>
         <layout class="QHBoxLayout" name="horizontalLayout_3">
          <item>
-          <widget class="QPushButton" name="pushButton_CameraSwitch">
+          <widget class="QPushButton" name="pushButton_AutoExpo">
            <property name="text">
-            <string>相机开关</string>
+            <string>自动曝光</string>
            </property>
            <property name="checkable">
             <bool>true</bool>
@@ -268,9 +268,9 @@ QSlider::add-page:vertical {
           </widget>
          </item>
          <item>
-          <widget class="QPushButton" name="pushButton_AutoExpo">
+          <widget class="QPushButton" name="pushButton_CameraSwitch">
            <property name="text">
-            <string>自动曝光</string>
+            <string>相机开关</string>
            </property>
            <property name="checkable">
             <bool>true</bool>
@@ -337,7 +337,10 @@ QSlider::add-page:vertical {
             <number>1</number>
            </property>
            <property name="maximum">
-            <number>200</number>
+            <number>100000</number>
+           </property>
+           <property name="value">
+            <number>300</number>
            </property>
           </widget>
          </item>
@@ -351,7 +354,17 @@ QSlider::add-page:vertical {
         </layout>
        </item>
        <item>
-        <widget class="QSpinBox" name="spinBox_SnapScheduledTimes"/>
+        <widget class="QSpinBox" name="spinBox_SnapScheduledTimes">
+         <property name="minimum">
+          <number>1</number>
+         </property>
+         <property name="maximum">
+          <number>10000000</number>
+         </property>
+         <property name="value">
+          <number>20</number>
+         </property>
+        </widget>
        </item>
       </layout>
      </item>

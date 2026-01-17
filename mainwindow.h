@@ -5,6 +5,7 @@
 #include <QSerialPort>
 #include <QSerialPortInfo>
 #include <QTimer>
+#include <functional>
 #include "led_ring_widget.h"
 #include "cameramanager.h"
 #include "motor_lens.h"
@@ -124,14 +125,16 @@ private:
     const int turntablePositions = 4;
     const int turntableFrequency = 1015; // 运动频率
     const int moveDurationMs = 8000;     // 旋转 90 度所需的时间 (ms)
-    const int settleDurationMs = 300;   // 停稳后的缓冲时间 (ms)
+    const int settleDurationMs = 500;   // 停稳后的缓冲时间 (ms)
 
     void autoScanStep();                // 状态机核心跳转函数
     void startMotion(int frequency);    // 开启电机
     void stopMotion();                  // 关闭电机
+    void setModeButtonsEnabled(bool enabled);
 
-    void handleTurntableSwitch(int targetIndex);
+    void handleTurntableSwitch(int targetIndex, std::function<void()> onFinished = nullptr);
 
     int m_currentPositionIndex = 0; // 记录当前转盘在哪个位置 (0, 1, 2, 3)
+
 };
 #endif // MAINWINDOW_H

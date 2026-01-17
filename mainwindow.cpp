@@ -33,17 +33,26 @@ MainWindow::MainWindow(QWidget *parent)
     ui->setupUi(this);
 
     // 创建互斥按钮组
-        QButtonGroup* group = new QButtonGroup(this);
-        group->addButton(ui->pushButton_ModeBright, 0);
-        group->addButton(ui->pushButton_Mode365, 1);
-        group->addButton(ui->pushButton_Mode488, 2);
-        group->addButton(ui->pushButton_Mode532, 3);
-        group->setExclusive(true);
+    QButtonGroup* group = new QButtonGroup(this);
+    group->addButton(ui->pushButton_ModeBright, 0);
+    group->addButton(ui->pushButton_Mode365, 1);
+    group->addButton(ui->pushButton_Mode488, 2);
+    group->addButton(ui->pushButton_Mode532, 3);
+    group->setExclusive(true);
 
-        // 2. 连接信号：当组内按钮被点击时触发转盘移动
-        connect(group, &QButtonGroup::idClicked, this, [=](int id) {
-            handleTurntableSwitch(id);
-        });
+    ui->pushButton_ModeBright->setEnabled(false);
+    ui->pushButton_Mode365->setEnabled(false);
+    ui->pushButton_Mode488->setEnabled(false);
+    ui->pushButton_Mode532->setEnabled(false);
+
+    // 2. 连接信号：当组内按钮被点击时触发转盘移动
+    connect(group, &QButtonGroup::idClicked, this, [=](int id) {
+        handleTurntableSwitch(id);
+    });
+
+    ui->pushButton_SnapScheduled->setEnabled(false);
+
+
 
     //串口初始化
     serialManager = new SerialManager(this);
@@ -172,18 +181,21 @@ void MainWindow::on_pushButton_PortSwitch_toggled(bool checked)
             serialManager->openPort(portName, 115200);
             if (serialManager->isOpen()){
                 ui->pushButton_PortSwitch->setText("关闭");
+                setModeButtonsEnabled(true);
             }
             else
             {
                 ui->pushButton_PortSwitch->blockSignals(true);
                 ui->pushButton_PortSwitch->setChecked(false);
                 ui->pushButton_PortSwitch->blockSignals(false);
+                setModeButtonsEnabled(false);
             }
         }
     } else {
         serialManager->closePort();
         if (!serialManager->isOpen()){
             ui->pushButton_PortSwitch->setText("打开");
+            setModeButtonsEnabled(false);
         }
         else{
             ui->pushButton_PortSwitch->blockSignals(true);
@@ -248,14 +260,17 @@ void MainWindow::on_pushButton_CameraSwitch_toggled(bool checked)
             connect(camera, &CameraManager::imageReady, this, &MainWindow::onImageReady);
             connect(camera, &CameraManager::stillImageArrived, this, &MainWindow::onStillImageArrived);
             ui->pushButton_CameraSwitch->setText("关闭相机");
+            ui->pushButton_SnapScheduled->setEnabled(true);
         } else {
             QMessageBox::warning(this, "错误", "相机打开失败！");
             ui->pushButton_CameraSwitch->setChecked(false); // 打开失败时重置按钮状态
+            ui->pushButton_SnapScheduled->setEnabled(false);
         }
     } else {
         // 关闭相机
         camera->close();
         ui->pushButton_CameraSwitch->setText("打开相机");
+        ui->pushButton_SnapScheduled->setEnabled(false);
     }
 
 }
@@ -421,12 +436,6 @@ void MainWindow::on_pushButton_SnapScheduled_toggled(bool checked)
                               ui->spinBox_ExposureTime_ModeBright->value(),
                               ui->spinBox_ExpoGain_ModeBright->value(), true});
         }
-        // 通道 4: 532nm
-        if (ui->checkBox_Mode532->isChecked()) {
-            scanTasks.append({"532", ui->spinBox_Mode532Pos->value(),
-                              ui->spinBox_ExposureTime_Mode532->value(),
-                              ui->spinBox_ExpoGain_Mode532->value(), true});
-        }
 
         // 通道 2: 365nm
         if (ui->checkBox_Mode365->isChecked()) {
@@ -439,6 +448,13 @@ void MainWindow::on_pushButton_SnapScheduled_toggled(bool checked)
             scanTasks.append({"488", ui->spinBox_Mode488Pos->value(),
                               ui->spinBox_ExposureTime_Mode488->value(),
                               ui->spinBox_ExpoGain_Mode488->value(), true});
+        }
+
+        // 通道 4: 532nm
+        if (ui->checkBox_Mode532->isChecked()) {
+            scanTasks.append({"532", ui->spinBox_Mode532Pos->value(),
+                              ui->spinBox_ExposureTime_Mode532->value(),
+                              ui->spinBox_ExpoGain_Mode532->value(), true});
         }
 
         if (scanTasks.isEmpty()) {
@@ -472,26 +488,44 @@ void MainWindow::autoScanStep()
     switch (scanState) {
     case AutoScanState::Capture: {
         CaptureTask task = scanTasks[currentTaskIndex];
-        qDebug() << "Executing Task:" << task.modeName;
+        qDebug() << "Preparing for Task:" << task.modeName;
 
         // 1. 设置相机参数
         camera->put_ExpoTime(task.exposure);
         camera->put_ExpoGain(task.gain);
 
-        // 2. 触发 UI 按钮（利用 click() 自动触发之前的指令发送逻辑）
+        // 2. 触发 UI 按钮切换光源（但不拍照）
         if (task.modeName == "Bright") ui->pushButton_ModeBright->click();
         else if (task.modeName == "365") ui->pushButton_Mode365->click();
         else if (task.modeName == "488") ui->pushButton_Mode488->click();
         else if (task.modeName == "532") ui->pushButton_Mode532->click();
 
-        // 3. 拍照并等待
-        disconnect(camera, &CameraManager::stillImageArrived, nullptr, nullptr);
-        connect(camera, &CameraManager::stillImageArrived, this, [=]() {
-            camera->fetchStillImageTif();
-            scanState = AutoScanState::NextPosition; // 拍照完进入下一阶段
+        // 3. 计算“曝光稳定时间”：2 * 曝光时间
+        // 注意：task.exposure 的单位通常是 ms 或 us，请根据你实际 spinBox 的含义核对
+        // 这里假设 task.exposure 是毫秒 (ms)
+        int exposureWaitTime = task.exposure * 2;
+
+        // 为了防止等待时间过短或过长，可以设置一个最小/最大阈值（可选）
+        exposureWaitTime = qMax(100, exposureWaitTime);
+
+        // 4. 进入等待状态，暂时停止 autoScanTimer 的逻辑处理，直到 SingleShot 回调触发
+        autoScanTimer->stop();
+
+        qDebug() << "Waiting for exposure stability:" << exposureWaitTime << "ms";
+
+        QTimer::singleShot(exposureWaitTime, this, [=]() {
+            // 5. 真正触发拍照逻辑
+            disconnect(camera, &CameraManager::stillImageArrived, nullptr, nullptr);
+            connect(camera, &CameraManager::stillImageArrived, this, [=]() {
+                camera->fetchStillImageTif();
+                scanState = AutoScanState::NextPosition;
+                autoScanTimer->start(50); // 拍照完成后恢复状态机轮询
+            });
+
+            camera->snapImage();
+            scanState = AutoScanState::WaitCaptureDone;
         });
-        camera->snapImage();
-        scanState = AutoScanState::WaitCaptureDone;
+
         break;
     }
 
@@ -504,16 +538,22 @@ void MainWindow::autoScanStep()
         }
         break;
 
-    case AutoScanState::MoveTurntable:
-        startMotion(turntableFrequency);
-        scanState = AutoScanState::WaitTurntableStable;
-        QTimer::singleShot(moveDurationMs, this, [=]() {
-            stopMotion();
-            QTimer::singleShot(settleDurationMs, this, [=]() {
-                scanState = AutoScanState::Capture; // 转完停稳后，去拍照
-            });
+    case AutoScanState::MoveTurntable: {
+        CaptureTask task = scanTasks[currentTaskIndex];
+
+        // 停止状态机轮询，等待转盘物理运动完成
+        autoScanTimer->stop();
+
+        qDebug() << "Moving turntable to position index:" << task.position;
+
+        // 调用带回调的切换函数
+        handleTurntableSwitch(task.position, [=]() {
+            // 只有当 handleTurntableSwitch 里的所有 singleShot 跑完后，才会执行这里
+            scanState = AutoScanState::Capture;
+            autoScanTimer->start(50); // 重新激活状态机
         });
         break;
+    }
 
     case AutoScanState::Finished:
         ui->pushButton_SnapScheduled->setChecked(false);
@@ -536,11 +576,11 @@ void MainWindow::startMotion(int frequency)
 
 void MainWindow::stopMotion()
 {
-    fluorescence->setEnabled(false);
+    //fluorescence->setEnabled(false);
     fluorescence->setFrequency(0);
 }
 
-void MainWindow::handleTurntableSwitch(int targetIndex)
+void MainWindow::handleTurntableSwitch(int targetIndex, std::function<void()> onFinished)
 {
     if (targetIndex == m_currentPositionIndex) return;
 
@@ -568,11 +608,19 @@ void MainWindow::handleTurntableSwitch(int targetIndex)
             m_currentPositionIndex = targetIndex; // 更新当前位置记录
             ui->groupBox_Image->setEnabled(true); // 恢复 UI
             qDebug() << "Turntable reached position:" << targetIndex;
-
+            if (onFinished) onFinished();
             // 可以在这里根据当前选中的 ID 自动打开对应的激光
             // 例如：if(targetIndex == 1) ui->pushButton_Laser365->click();
         });
     });
+}
+
+void MainWindow::setModeButtonsEnabled(bool enabled)
+{
+    ui->pushButton_ModeBright->setEnabled(enabled);
+    ui->pushButton_Mode365->setEnabled(enabled);
+    ui->pushButton_Mode488->setEnabled(enabled);
+    ui->pushButton_Mode532->setEnabled(enabled);
 }
 
 

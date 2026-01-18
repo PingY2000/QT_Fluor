@@ -9,12 +9,8 @@
 #include <QDir>
 
 
-void CameraManager::setLedStateString(const QString &state) {
-    ledStateString = state;
-}
-
-QString CameraManager::getLedStateString() const {
-    return ledStateString;
+void CameraManager::setModeName(const QString &Name) {
+    modeName = Name;
 }
 
 CameraManager::CameraManager(QObject *parent) : QObject(parent)
@@ -135,11 +131,8 @@ void CameraManager::fetchStillImageTif() {
 
             // 构造文件路径，带曝光信息
             QString timestamp = QDateTime::currentDateTime().toString("yyyyMMdd_HHmmss");
-            QString filename = QString("snapshot_%1_exp%2_gain%3_%4.tif")
-                                   .arg(timestamp)
-                                   .arg(exposure_us/1000)
-                                   .arg(gain)
-                                   .arg(ledStateString.isEmpty() ? "UNKNOWN" : ledStateString);
+            QString filename = QString("snapshot_%1_%2_exp%3ms_gain%4.tif")
+                                   .arg(timestamp, modeName, QString::number(exposure_us / 1000), QString::number(gain));
             QString filePath = QDir(saveDirectory).filePath(filename);
 
             if (img.save(filePath, "TIFF")) {

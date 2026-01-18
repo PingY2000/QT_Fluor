@@ -499,15 +499,15 @@ void MainWindow::on_pushButton_SnapScheduled_toggled(bool checked)
         }
         m_periodTimer->start(1000);
 
-        currentTaskIndex = 0;
-        // 起始动作：由于手动已经调至 0 位，建议第一个任务直接从 Capture 开始
-        scanState = AutoScanState::Capture;
+
 
         if (!autoScanTimer) {
             autoScanTimer = new QTimer(this);
             connect(autoScanTimer, &QTimer::timeout, this, &MainWindow::autoScanStep);
         }
         autoScanTimer->start(50);
+
+        startNewScanCycle();
     } else {
         if (autoScanTimer) autoScanTimer->stop();
         if (m_periodTimer) m_periodTimer->stop();
@@ -523,107 +523,95 @@ void MainWindow::autoScanStep()
     }
 
     switch (scanState) {
-    case AutoScanState::Capture: {
+
+    case AutoScanState::MoveTurntable: {
+        autoScanTimer->stop(); // 停止轮询，等待移动完成
         CaptureTask task = scanTasks[currentTaskIndex];
-        qDebug() << "Preparing for Task:" << task.modeName;
 
-        // --- 1. 打开对应灯光 ---
-        // 先关闭所有灯光以防混光（可选）
-        if(ui->pushButton_LightBright->isChecked()) ui->pushButton_LightBright->setChecked(false);
-        if(ui->pushButton_Laser365->isChecked()) ui->pushButton_Laser365->setChecked(false);
-        if(ui->pushButton_Laser488->isChecked()) ui->pushButton_Laser488->setChecked(false);
-        if(ui->pushButton_Laser532->isChecked()) ui->pushButton_Laser532->setChecked(false);
+        qDebug() << ">>> Step 1: Moving to" << task.modeName << "at position" << task.position;
 
-        QTimer::singleShot(500, this, [=](){
+        // 这里的 handleTurntableSwitch 内部会处理电机转动和 settleDurationMs 静止时间
+        handleTurntableSwitch(task.position, [=]() {
+            // 同步更新 UI 上的模式按钮状态（让用户看到转盘切到了哪）
+            if(task.position == 0) ui->pushButton_ModeBright->setChecked(true);
+            else if(task.position == 1) ui->pushButton_Mode365->setChecked(true);
+            else if(task.position == 2) ui->pushButton_Mode488->setChecked(true);
+            else if(task.position == 3) ui->pushButton_Mode532->setChecked(true);
+
+            scanState = AutoScanState::Capture; // 移动稳了，去拍照
+            autoScanTimer->start(50);
+        });
+        break;
+    }
+
+    case AutoScanState::Capture: {
+        autoScanTimer->stop(); // 进入异步拍照流程，停止轮询
+        CaptureTask task = scanTasks[currentTaskIndex];
+
+        qDebug() << ">>> Step 2: Lighting & Capturing" << task.modeName;
+
+        // 1. 关闭所有灯 (500ms 消隐)
+        ui->pushButton_LightBright->setChecked(false);
+        ui->pushButton_Laser365->setChecked(false);
+        ui->pushButton_Laser488->setChecked(false);
+        ui->pushButton_Laser532->setChecked(false);
+
+        QTimer::singleShot(500, this, [=]() {
+            // 2. 开启目标灯光
             if (task.modeName == "Bright") ui->pushButton_LightBright->setChecked(true);
             else if (task.modeName == "365") ui->pushButton_Laser365->setChecked(true);
             else if (task.modeName == "488") ui->pushButton_Laser488->setChecked(true);
             else if (task.modeName == "532") ui->pushButton_Laser532->setChecked(true);
 
-            // 1. 设置相机参数
-            ui->pushButton_AutoExpo->setChecked(false);
-            ui->spinBox_ExposureTime->setValue(task.exposure );
-            ui->spinBox_ExpoGain->setValue(task.gain);
+            // 3. 设置参数
+            camera->setModeName(task.modeName); // 确保文件名正确
+            camera->put_ExpoTime(task.exposure);
+            camera->put_ExpoGain(task.gain);
 
-            // 3. 计算“曝光稳定时间”：2 * 曝光时间
-            // 注意：task.exposure 的单位通常是 ms 或 us，请根据你实际 spinBox 的含义核对
-            // 这里假设 task.exposure 是毫秒 (ms)
-            int exposureWaitTime = task.exposure * 5+500;
-
-            // 为了防止等待时间过短或过长，可以设置一个最小/最大阈值（可选）
-            exposureWaitTime = qMax(1000, exposureWaitTime);
-
-            // 4. 进入等待状态，暂时停止 autoScanTimer 的逻辑处理，直到 SingleShot 回调触发
-            autoScanTimer->stop();
-
-            qDebug() << "Waiting for exposure stability:" << exposureWaitTime << "ms";
-
+            // 4. 等待曝光稳定 (给相机缓冲区清空的时间)
+            int exposureWaitTime = (task.exposure * 2) + 1000;
             QTimer::singleShot(exposureWaitTime, this, [=]() {
-                // 5. 真正触发拍照逻辑
+
+                // 5. 连接拍照完成回调
                 disconnect(camera, &CameraManager::stillImageArrived, nullptr, nullptr);
                 connect(camera, &CameraManager::stillImageArrived, this, [=]() {
                     camera->fetchStillImageTif();
+
+                    // 6. 拍完关灯
+                    ui->pushButton_LightBright->setChecked(false);
+                    ui->pushButton_Laser365->setChecked(false);
+                    ui->pushButton_Laser488->setChecked(false);
+                    ui->pushButton_Laser532->setChecked(false);
+
+                    // 7. 进入下一环节
                     scanState = AutoScanState::NextPosition;
-                    autoScanTimer->start(50); // 拍照完成后恢复状态机轮询
+                    autoScanTimer->start(50);
                 });
 
                 camera->snapImage();
-                scanState = AutoScanState::WaitCaptureDone;
-
-                if(ui->pushButton_LightBright->isChecked()) ui->pushButton_LightBright->setChecked(false);
-                if(ui->pushButton_Laser365->isChecked()) ui->pushButton_Laser365->setChecked(false);
-                if(ui->pushButton_Laser488->isChecked()) ui->pushButton_Laser488->setChecked(false);
-                if(ui->pushButton_Laser532->isChecked()) ui->pushButton_Laser532->setChecked(false);
             });
         });
-
-
-
-
-
         break;
     }
 
     case AutoScanState::NextPosition:
         currentTaskIndex++;
         if (currentTaskIndex < scanTasks.size()) {
-            scanState = AutoScanState::MoveTurntable;
+            scanState = AutoScanState::MoveTurntable; // 还有任务，继续转动
         } else {
             scanState = AutoScanState::Finished;
         }
         break;
 
-    case AutoScanState::MoveTurntable: {
-        CaptureTask task = scanTasks[currentTaskIndex];
-
-        // 停止状态机轮询，等待转盘物理运动完成
-        autoScanTimer->stop();
-
-        qDebug() << "Moving turntable to position index:" << task.position;
-
-        // 调用带回调的切换函数
-        handleTurntableSwitch(task.position, [=]() {
-            // 只有当 handleTurntableSwitch 里的所有 singleShot 跑完后，才会执行这里
-            scanState = AutoScanState::Capture;
-            autoScanTimer->start(50); // 重新激活状态机
-        });
-        break;
-    }
-
     case AutoScanState::Finished:
-        autoScanTimer->stop(); // 停止状态机轮询，等待秒表定时器触发下一轮
-        qDebug() << "Cycle finished, returning to Bright position...";
+        autoScanTimer->stop();
+        qDebug() << ">>> Cycle complete. Resetting to Home.";
         handleTurntableSwitch(0, [=]() {
-            // 转盘回到0位后的回调
-            if (m_completedCycles>=m_RepeatTimes) {
+            ui->pushButton_ModeBright->setChecked(true);
+            if (m_completedCycles >= m_RepeatTimes) {
                 ui->pushButton_SnapScheduled->setChecked(false);
-                if (m_periodTimer) m_periodTimer->stop();
-                // 关闭所有光源
-                ui->pushButton_LightBright->setChecked(false);
-                fluorescence->sendFluorescenceCommand(false, false, false);
-                qDebug() << "All repeats finished.";
-            } else {
-                qDebug() << "Waiting for next period timer...";
+                m_periodTimer->stop();
+                ui->spinBox_SnapScheduledPeriod_Show->setValue(0);
             }
             scanState = AutoScanState::Idle;
         });
@@ -635,8 +623,6 @@ void MainWindow::autoScanStep()
 
 void MainWindow::startMotion(int frequency)
 {
-    // 借用你已有的 motorLens 或 fluorescence 接口控制转盘电机
-    // 假设转盘由 fluorescence 里的电机控制
     fluorescence->setDirection(1); // 固定正向旋转
     fluorescence->setFrequency(frequency);
     fluorescence->setEnabled(true);
@@ -719,4 +705,10 @@ void MainWindow::startNewScanCycle()
 
 
 
+
+
+void MainWindow::on_spinBox_SnapScheduledTimes_valueChanged(int arg1)
+{
+    m_RepeatTimes=arg1;
+}
 

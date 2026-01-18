@@ -34,8 +34,7 @@ public:
     void setSaveDirectory(const QString& dir);
 
     // 新增：设置 LED 状态字符串
-    void setLedStateString(const QString &state);
-    QString getLedStateString() const;
+    void setModeName(const QString &Name);
 
     enum class ImageSource {
         Realtime,
@@ -55,7 +54,7 @@ private:
     QTimer* timer = nullptr;
     QString saveDirectory;
 
-    QString ledStateString;  // 用于保存 LED 状态
+    QString modeName;
 
 private slots:
 

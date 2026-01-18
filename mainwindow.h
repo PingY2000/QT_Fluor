@@ -136,7 +136,8 @@ private:
 
     int m_currentPositionIndex = 0; // 记录当前转盘在哪个位置 (0, 1, 2, 3)
 
-    int m_remainingRepeatTimes; // 剩余重复次数
+    int m_RepeatTimes; // 剩余重复次数
+    int m_completedCycles; // 记录当前是第几次循环
     int m_currentPeriodSeconds; // 当前周期已过秒数
     QTimer* m_periodTimer;      // 用于更新秒表显示的 1秒定时器
 

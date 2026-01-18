@@ -34,7 +34,7 @@ MainWindow::MainWindow(QWidget *parent)
 
     m_periodTimer = nullptr;
     autoScanTimer = nullptr;
-    m_remainingRepeatTimes = 0;
+    m_completedCycles = 0;
     m_currentPeriodSeconds = 0;
 
     // 创建互斥按钮组
@@ -140,14 +140,10 @@ void MainWindow::updateExposureDisplay() {
     unsigned exp = 0;
     unsigned short gain = 0;
     if (camera->getExposureTime(exp)) {
-        ui->spinBox_ExposureTime->blockSignals(true); // 防止触发 valueChanged
         ui->spinBox_ExposureTime->setValue(exp / 1000);
-        ui->spinBox_ExposureTime->blockSignals(false);
     }
     if (camera->getGain(gain)) {
-        ui->spinBox_ExpoGain->blockSignals(true); // 防止触发 valueChanged
         ui->spinBox_ExpoGain->setValue(gain);
-        ui->spinBox_ExpoGain->blockSignals(false);
     }
 }
 
@@ -431,15 +427,17 @@ void MainWindow::on_pushButton_MotorFliter_ENA_toggled(bool checked)
 void MainWindow::on_pushButton_SnapScheduled_toggled(bool checked)
 {
     if (checked) {
+        ui->pushButton_AutoExpo->setChecked(false);
         // 1. 初始化计数器
-        m_remainingRepeatTimes = ui->spinBox_SnapScheduledTimes->value();
+        m_RepeatTimes = ui->spinBox_SnapScheduledTimes->value();
+        m_completedCycles = 0;
         m_currentPeriodSeconds = 0;
 
         // 更新 UI 显示
-        ui->spinBox_SnapScheduledTimes_Show->setValue(m_remainingRepeatTimes);
+        ui->spinBox_SnapScheduledTimes_Show->setValue(0);
         ui->spinBox_SnapScheduledPeriod_Show->setValue(0);
 
-        if (m_remainingRepeatTimes <= 0) {
+        if (m_completedCycles >= m_RepeatTimes) {
             ui->pushButton_SnapScheduled->setChecked(false);
             return;
         }
@@ -529,41 +527,59 @@ void MainWindow::autoScanStep()
         CaptureTask task = scanTasks[currentTaskIndex];
         qDebug() << "Preparing for Task:" << task.modeName;
 
-        // 1. 设置相机参数
-        camera->put_ExpoTime(task.exposure);
-        camera->put_ExpoGain(task.gain);
+        // --- 1. 打开对应灯光 ---
+        // 先关闭所有灯光以防混光（可选）
+        if(ui->pushButton_LightBright->isChecked()) ui->pushButton_LightBright->setChecked(false);
+        if(ui->pushButton_Laser365->isChecked()) ui->pushButton_Laser365->setChecked(false);
+        if(ui->pushButton_Laser488->isChecked()) ui->pushButton_Laser488->setChecked(false);
+        if(ui->pushButton_Laser532->isChecked()) ui->pushButton_Laser532->setChecked(false);
 
-        // 2. 触发 UI 按钮切换光源（但不拍照）
-        if (task.modeName == "Bright") ui->pushButton_ModeBright->click();
-        else if (task.modeName == "365") ui->pushButton_Mode365->click();
-        else if (task.modeName == "488") ui->pushButton_Mode488->click();
-        else if (task.modeName == "532") ui->pushButton_Mode532->click();
+        QTimer::singleShot(500, this, [=](){
+            if (task.modeName == "Bright") ui->pushButton_LightBright->setChecked(true);
+            else if (task.modeName == "365") ui->pushButton_Laser365->setChecked(true);
+            else if (task.modeName == "488") ui->pushButton_Laser488->setChecked(true);
+            else if (task.modeName == "532") ui->pushButton_Laser532->setChecked(true);
 
-        // 3. 计算“曝光稳定时间”：2 * 曝光时间
-        // 注意：task.exposure 的单位通常是 ms 或 us，请根据你实际 spinBox 的含义核对
-        // 这里假设 task.exposure 是毫秒 (ms)
-        int exposureWaitTime = task.exposure * 2;
+            // 1. 设置相机参数
+            ui->pushButton_AutoExpo->setChecked(false);
+            ui->spinBox_ExposureTime->setValue(task.exposure );
+            ui->spinBox_ExpoGain->setValue(task.gain);
 
-        // 为了防止等待时间过短或过长，可以设置一个最小/最大阈值（可选）
-        exposureWaitTime = qMax(100, exposureWaitTime);
+            // 3. 计算“曝光稳定时间”：2 * 曝光时间
+            // 注意：task.exposure 的单位通常是 ms 或 us，请根据你实际 spinBox 的含义核对
+            // 这里假设 task.exposure 是毫秒 (ms)
+            int exposureWaitTime = task.exposure * 5+500;
 
-        // 4. 进入等待状态，暂时停止 autoScanTimer 的逻辑处理，直到 SingleShot 回调触发
-        autoScanTimer->stop();
+            // 为了防止等待时间过短或过长，可以设置一个最小/最大阈值（可选）
+            exposureWaitTime = qMax(1000, exposureWaitTime);
 
-        qDebug() << "Waiting for exposure stability:" << exposureWaitTime << "ms";
+            // 4. 进入等待状态，暂时停止 autoScanTimer 的逻辑处理，直到 SingleShot 回调触发
+            autoScanTimer->stop();
 
-        QTimer::singleShot(exposureWaitTime, this, [=]() {
-            // 5. 真正触发拍照逻辑
-            disconnect(camera, &CameraManager::stillImageArrived, nullptr, nullptr);
-            connect(camera, &CameraManager::stillImageArrived, this, [=]() {
-                camera->fetchStillImageTif();
-                scanState = AutoScanState::NextPosition;
-                autoScanTimer->start(50); // 拍照完成后恢复状态机轮询
+            qDebug() << "Waiting for exposure stability:" << exposureWaitTime << "ms";
+
+            QTimer::singleShot(exposureWaitTime, this, [=]() {
+                // 5. 真正触发拍照逻辑
+                disconnect(camera, &CameraManager::stillImageArrived, nullptr, nullptr);
+                connect(camera, &CameraManager::stillImageArrived, this, [=]() {
+                    camera->fetchStillImageTif();
+                    scanState = AutoScanState::NextPosition;
+                    autoScanTimer->start(50); // 拍照完成后恢复状态机轮询
+                });
+
+                camera->snapImage();
+                scanState = AutoScanState::WaitCaptureDone;
+
+                if(ui->pushButton_LightBright->isChecked()) ui->pushButton_LightBright->setChecked(false);
+                if(ui->pushButton_Laser365->isChecked()) ui->pushButton_Laser365->setChecked(false);
+                if(ui->pushButton_Laser488->isChecked()) ui->pushButton_Laser488->setChecked(false);
+                if(ui->pushButton_Laser532->isChecked()) ui->pushButton_Laser532->setChecked(false);
             });
-
-            camera->snapImage();
-            scanState = AutoScanState::WaitCaptureDone;
         });
+
+
+
+
 
         break;
     }
@@ -596,14 +612,21 @@ void MainWindow::autoScanStep()
 
     case AutoScanState::Finished:
         autoScanTimer->stop(); // 停止状态机轮询，等待秒表定时器触发下一轮
-        qDebug() << "One cycle finished. Waiting for next period...";
-
-        // 如果次数已经用完，且当前这一轮也跑完了
-        if (m_remainingRepeatTimes <= 0) {
-            ui->pushButton_SnapScheduled->setChecked(false);
-            if (m_periodTimer) m_periodTimer->stop();
-            fluorescence->sendFluorescenceCommand(false, false, false);
-        }
+        qDebug() << "Cycle finished, returning to Bright position...";
+        handleTurntableSwitch(0, [=]() {
+            // 转盘回到0位后的回调
+            if (m_completedCycles>=m_RepeatTimes) {
+                ui->pushButton_SnapScheduled->setChecked(false);
+                if (m_periodTimer) m_periodTimer->stop();
+                // 关闭所有光源
+                ui->pushButton_LightBright->setChecked(false);
+                fluorescence->sendFluorescenceCommand(false, false, false);
+                qDebug() << "All repeats finished.";
+            } else {
+                qDebug() << "Waiting for next period timer...";
+            }
+            scanState = AutoScanState::Idle;
+        });
         break;
 
     default: break;
@@ -627,7 +650,11 @@ void MainWindow::stopMotion()
 
 void MainWindow::handleTurntableSwitch(int targetIndex, std::function<void()> onFinished)
 {
-    if (targetIndex == m_currentPositionIndex) return;
+    if (targetIndex == m_currentPositionIndex) {
+        qDebug() << "Already at position" << targetIndex;
+        if (onFinished) onFinished(); // 必须执行回调！
+        return;
+    }
 
     // 1. 计算位置差 (假设转盘只能单向正向旋转)
     int steps = targetIndex - m_currentPositionIndex;
@@ -670,12 +697,12 @@ void MainWindow::setModeButtonsEnabled(bool enabled)
 
 void MainWindow::startNewScanCycle()
 {
-    if (m_remainingRepeatTimes > 0) {
+    if (m_completedCycles<m_RepeatTimes ) {
         currentTaskIndex = 0;
         scanState = AutoScanState::Capture;
-
+        m_completedCycles++;
         // 更新剩余次数显示
-        ui->spinBox_SnapScheduledTimes_Show->setValue(m_remainingRepeatTimes);
+        ui->spinBox_SnapScheduledTimes_Show->setValue(m_completedCycles);
 
         if (!autoScanTimer) {
             autoScanTimer = new QTimer(this);
@@ -683,7 +710,7 @@ void MainWindow::startNewScanCycle()
         }
         autoScanTimer->start(50);
 
-        m_remainingRepeatTimes--; // 减少计数
+
     } else {
         // 全部次数完成
         ui->pushButton_SnapScheduled->setChecked(false);

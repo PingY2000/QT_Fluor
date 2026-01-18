@@ -17,9 +17,9 @@
    <widget class="QLabel" name="labeldisplay">
     <property name="geometry">
      <rect>
-      <x>410</x>
+      <x>430</x>
       <y>40</y>
-      <width>901</width>
+      <width>881</width>
       <height>591</height>
      </rect>
     </property>
@@ -38,7 +38,7 @@
      <rect>
       <x>200</x>
       <y>490</y>
-      <width>181</width>
+      <width>201</width>
       <height>141</height>
      </rect>
     </property>
@@ -309,7 +309,7 @@ QSlider::add-page:vertical {
      <rect>
       <x>40</x>
       <y>30</y>
-      <width>341</width>
+      <width>361</width>
       <height>261</height>
      </rect>
     </property>
@@ -940,7 +940,7 @@ QPushButton:checked {
      <rect>
       <x>40</x>
       <y>300</y>
-      <width>341</width>
+      <width>361</width>
       <height>181</height>
      </rect>
     </property>
@@ -949,7 +949,7 @@ QPushButton:checked {
     </property>
     <layout class="QHBoxLayout" name="horizontalLayout_13">
      <item>
-      <widget class="QTextEdit" name="textEdit"/>
+      <widget class="QTextEdit" name="textEdit_StateShow"/>
      </item>
     </layout>
    </widget>

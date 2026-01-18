@@ -130,15 +130,17 @@ void CameraManager::fetchStillImageTif() {
             Toupcam_get_ExpoAGain(hcam, &gain);
 
             // 构造文件路径，带曝光信息
-            QString timestamp = QDateTime::currentDateTime().toString("yyyyMMdd_HHmmss");
-            QString filename = QString("snapshot_%1_%2_exp%3ms_gain%4.tif")
+            QString timestamp = QDateTime::currentDateTime().toString("yyMMdd_HHmmss");
+            QString filename = QString("%1_%2_exp%3_gain%4.tif")
                                    .arg(timestamp, modeName, QString::number(exposure_us / 1000), QString::number(gain));
             QString filePath = QDir(saveDirectory).filePath(filename);
 
             if (img.save(filePath, "TIFF")) {
                 qDebug() << "TIFF 彩色图像已保存到：" << filePath;
+                emit infoLogRequested(QString("TIFF 图像已保存到: %1").arg(filePath));
             } else {
                 qWarning() << "TIFF 彩色图像保存失败";
+                emit infoLogRequested("Error: TIFF 图像保存失败");
             }
 
             emit imageReady(img.copy());

@@ -48,6 +48,7 @@ signals:
     void imageArrived();
     void stillImageArrived();
     void exposureChanged();
+    void infoLogRequested(const QString &message);
 
 private:
     HToupcam hcam = nullptr;

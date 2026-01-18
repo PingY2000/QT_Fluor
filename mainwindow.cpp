@@ -78,6 +78,7 @@ MainWindow::MainWindow(QWidget *parent)
     ui->spinBox_ExpoGain->setReadOnly(true);
     camera->setAutoExposure(true);
     connect(camera, &CameraManager::exposureChanged, this, &MainWindow::updateExposureDisplay);
+    connect(camera, &CameraManager::infoLogRequested, this, &MainWindow::logStatus);
 
     //镜头电机组件
     motorLens = new MotorLens(serialManager, this);
@@ -112,8 +113,8 @@ MainWindow::~MainWindow()
 void MainWindow::appendSerialData(const QByteArray &data)
 {
     // 显示在 QTextEdit 控件中（例如 ui->textEdit_SerialMonitor）
-    ui->textEdit_SerialMonitor->moveCursor(QTextCursor::End);
-    ui->textEdit_SerialMonitor->insertPlainText(QString::fromUtf8(data));
+    //ui->textEdit_SerialMonitor->moveCursor(QTextCursor::End);
+    //ui->textEdit_SerialMonitor->insertPlainText(QString::fromUtf8(data));
 }
 
 // 图像到达通知：从相机中拉图像
@@ -529,6 +530,7 @@ void MainWindow::autoScanStep()
         CaptureTask task = scanTasks[currentTaskIndex];
 
         qDebug() << ">>> Step 1: Moving to" << task.modeName << "at position" << task.position;
+        logStatus(QString("Moving to %1 at position %2").arg(task.modeName).arg(task.position));
 
         // 这里的 handleTurntableSwitch 内部会处理电机转动和 settleDurationMs 静止时间
         handleTurntableSwitch(task.position, [=]() {
@@ -549,6 +551,7 @@ void MainWindow::autoScanStep()
         CaptureTask task = scanTasks[currentTaskIndex];
 
         qDebug() << ">>> Step 2: Lighting & Capturing" << task.modeName;
+        logStatus(QString("Lighting & Capturing :%1").arg(task.modeName));
 
         // 1. 关闭所有灯 (500ms 消隐)
         ui->pushButton_LightBright->setChecked(false);
@@ -606,6 +609,7 @@ void MainWindow::autoScanStep()
     case AutoScanState::Finished:
         autoScanTimer->stop();
         qDebug() << ">>> Cycle complete. Resetting to Home.";
+        logStatus("Cycle complete. Resetting to Home.");
         handleTurntableSwitch(0, [=]() {
             ui->pushButton_ModeBright->setChecked(true);
             if (m_completedCycles >= m_RepeatTimes) {
@@ -712,3 +716,19 @@ void MainWindow::on_spinBox_SnapScheduledTimes_valueChanged(int arg1)
     m_RepeatTimes=arg1;
 }
 
+
+void MainWindow::logStatus(const QString &message)
+{
+    // 1. 构造带时间戳的信息
+    QString timestamp = QDateTime::currentDateTime().toString("HH:mm:ss");
+    QString logLine = QString("%1   %2").arg(timestamp, message);
+
+    // 2. 依然保留控制台打印，方便调试
+    qDebug() << logLine;
+
+    // 3. 追加到 UI (确保在主线程调用)
+    ui->textEdit_StateShow->append(logLine);
+
+    // 4. 自动滚动到底部
+    ui->textEdit_StateShow->moveCursor(QTextCursor::End);
+}

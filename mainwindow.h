@@ -103,6 +103,7 @@ private slots:
 
     void on_spinBox_SnapScheduledTimes_valueChanged(int arg1);
 
+
 private:
 
     Ui::MainWindow *ui;
@@ -145,6 +146,9 @@ private:
     QTimer* m_periodTimer;      // 用于更新秒表显示的 1秒定时器
 
     void startNewScanCycle();
+
+    void logStatus(const QString &message);
+
 
 };
 #endif // MAINWINDOW_H

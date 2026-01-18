@@ -32,6 +32,11 @@ MainWindow::MainWindow(QWidget *parent)
 {
     ui->setupUi(this);
 
+    m_periodTimer = nullptr;
+    autoScanTimer = nullptr;
+    m_remainingRepeatTimes = 0;
+    m_currentPeriodSeconds = 0;
+
     // 创建互斥按钮组
     QButtonGroup* group = new QButtonGroup(this);
     group->addButton(ui->pushButton_ModeBright, 0);
@@ -426,6 +431,18 @@ void MainWindow::on_pushButton_MotorFliter_ENA_toggled(bool checked)
 void MainWindow::on_pushButton_SnapScheduled_toggled(bool checked)
 {
     if (checked) {
+        // 1. 初始化计数器
+        m_remainingRepeatTimes = ui->spinBox_SnapScheduledTimes->value();
+        m_currentPeriodSeconds = 0;
+
+        // 更新 UI 显示
+        ui->spinBox_SnapScheduledTimes_Show->setValue(m_remainingRepeatTimes);
+        ui->spinBox_SnapScheduledPeriod_Show->setValue(0);
+
+        if (m_remainingRepeatTimes <= 0) {
+            ui->pushButton_SnapScheduled->setChecked(false);
+            return;
+        }
         qDebug() << "Auto Scan Starting...";
         scanTasks.clear();
 
@@ -463,6 +480,27 @@ void MainWindow::on_pushButton_SnapScheduled_toggled(bool checked)
             return;
         }
 
+        // 3. 启动秒表定时器 (每秒触发一次)
+        if (!m_periodTimer) {
+            m_periodTimer = new QTimer(this);
+            connect(m_periodTimer, &QTimer::timeout, this, [this]() {
+                m_currentPeriodSeconds++;
+                ui->spinBox_SnapScheduledPeriod_Show->setValue(m_currentPeriodSeconds);
+
+                // 如果到达设定周期
+                if (m_currentPeriodSeconds >= ui->spinBox_SnapScheduledPeriod->value()) {
+                    m_currentPeriodSeconds = 0;
+                    ui->spinBox_SnapScheduledPeriod_Show->setValue(0);
+
+                    // 如果任务还没结束，开启新一轮扫描
+                    if (scanState == AutoScanState::Idle || scanState == AutoScanState::Finished) {
+                        startNewScanCycle();
+                    }
+                }
+            });
+        }
+        m_periodTimer->start(1000);
+
         currentTaskIndex = 0;
         // 起始动作：由于手动已经调至 0 位，建议第一个任务直接从 Capture 开始
         scanState = AutoScanState::Capture;
@@ -474,6 +512,7 @@ void MainWindow::on_pushButton_SnapScheduled_toggled(bool checked)
         autoScanTimer->start(50);
     } else {
         if (autoScanTimer) autoScanTimer->stop();
+        if (m_periodTimer) m_periodTimer->stop();
         stopMotion();
         scanState = AutoScanState::Idle;
     }
@@ -556,9 +595,15 @@ void MainWindow::autoScanStep()
     }
 
     case AutoScanState::Finished:
-        ui->pushButton_SnapScheduled->setChecked(false);
-        // 结束时建议关闭所有光源
-        fluorescence->sendFluorescenceCommand(false, false, false);
+        autoScanTimer->stop(); // 停止状态机轮询，等待秒表定时器触发下一轮
+        qDebug() << "One cycle finished. Waiting for next period...";
+
+        // 如果次数已经用完，且当前这一轮也跑完了
+        if (m_remainingRepeatTimes <= 0) {
+            ui->pushButton_SnapScheduled->setChecked(false);
+            if (m_periodTimer) m_periodTimer->stop();
+            fluorescence->sendFluorescenceCommand(false, false, false);
+        }
         break;
 
     default: break;
@@ -621,6 +666,28 @@ void MainWindow::setModeButtonsEnabled(bool enabled)
     ui->pushButton_Mode365->setEnabled(enabled);
     ui->pushButton_Mode488->setEnabled(enabled);
     ui->pushButton_Mode532->setEnabled(enabled);
+}
+
+void MainWindow::startNewScanCycle()
+{
+    if (m_remainingRepeatTimes > 0) {
+        currentTaskIndex = 0;
+        scanState = AutoScanState::Capture;
+
+        // 更新剩余次数显示
+        ui->spinBox_SnapScheduledTimes_Show->setValue(m_remainingRepeatTimes);
+
+        if (!autoScanTimer) {
+            autoScanTimer = new QTimer(this);
+            connect(autoScanTimer, &QTimer::timeout, this, &MainWindow::autoScanStep);
+        }
+        autoScanTimer->start(50);
+
+        m_remainingRepeatTimes--; // 减少计数
+    } else {
+        // 全部次数完成
+        ui->pushButton_SnapScheduled->setChecked(false);
+    }
 }
 
 
